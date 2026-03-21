@@ -209,6 +209,32 @@ EOF
     log_success "MOTD updated."
 }
 
+install_certbot() {
+    log_info "Installing Certbot and Nginx plugin..."
+    apt-get install -y certbot python3-certbot-nginx
+    log_success "Certbot installed."
+}
+
+setup_backups() {
+    log_info "Setting up automated database backups..."
+    cat <<'EOF' > /usr/local/bin/linuxinit-backup.sh
+#!/bin/bash
+BACKUP_DIR="/var/backups/linuxinit"
+mkdir -p "$BACKUP_DIR"
+if command -v pg_dump > /dev/null; then
+    pg_dumpall > "$BACKUP_DIR/postgres_$(date +%F).sql"
+fi
+if command -v redis-cli > /dev/null; then
+    redis-cli save
+    cp /var/lib/redis/dump.rdb "$BACKUP_DIR/redis_$(date +%F).rdb"
+fi
+find "$BACKUP_DIR" -type f -mtime +7 -delete
+EOF
+    chmod +x /usr/local/bin/linuxinit-backup.sh
+    (crontab -l 2>/dev/null; echo "0 3 * * * /usr/local/bin/linuxinit-backup.sh") | crontab -
+    log_success "Backup script installed at /usr/local/bin/linuxinit-backup.sh (Cron: 3 AM daily)."
+}
+
 cleanup() {
     log_info "Cleaning up redundant packages..."
     apt-get autoremove -y && apt-get autoclean -y
@@ -301,6 +327,14 @@ main() {
         configure_ssh
         setup_motd
         SECURITY_STATUS="Hardened"
+    fi
+
+    if ask_question "Setup SSL (Certbot) for Nginx?"; then
+        install_certbot
+    fi
+
+    if ask_question "Enable Automated Backups (Postgres/Redis)?"; then
+        setup_backups
     fi
 
     if ask_question "Install Essential Utils (Git/Curl)?"; then
