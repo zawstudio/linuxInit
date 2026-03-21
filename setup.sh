@@ -169,6 +169,46 @@ install_utils() {
     log_success "Utilities installed."
 }
 
+configure_sysctl() {
+    log_info "Applying sysctl optimizations..."
+    cat <<EOF > /etc/sysctl.d/99-linuxinit.conf
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_slow_start_after_idle = 0
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+fs.file-max = 2097152
+EOF
+    sysctl -p /etc/sysctl.d/99-linuxinit.conf
+    log_success "Sysctl optimizations applied."
+}
+
+configure_ssh() {
+    log_info "Hardening SSH configuration..."
+    if ask_question "Do you want to change default SSH port?"; then
+        printf "${YELLOW}[?]${NC} Enter new SSH port [2222]: "
+        read -r ssh_port || ssh_port="2222"
+        sed -i "s/#Port 22/Port $ssh_port/" /etc/ssh/sshd_config
+        log_success "SSH port changed to $ssh_port."
+    fi
+    if ask_question "Disable SSH password authentication (require keys)?"; then
+        sed -i "s/#PasswordAuthentication yes/PasswordAuthentication no/" /etc/ssh/sshd_config
+        sed -i "s/PasswordAuthentication yes/PasswordAuthentication no/" /etc/ssh/sshd_config
+        log_success "SSH password authentication disabled."
+    fi
+    systemctl restart ssh
+}
+
+setup_motd() {
+    log_info "Setting up professional MOTD..."
+    cat <<'EOF' > /etc/motd
+   linuxInit - Systems Manager
+   Status: Hardened & Optimized
+EOF
+    log_success "MOTD updated."
+}
+
 cleanup() {
     log_info "Cleaning up redundant packages..."
     apt-get autoremove -y && apt-get autoclean -y
@@ -254,6 +294,13 @@ main() {
     if ask_question "Install Neovim & Tmux?"; then
         install_editor_tools
         TOOLS_STATUS="Installed"
+    fi
+
+    if ask_question "Apply Security Hardening (SSH/Sysctl)?"; then
+        configure_sysctl
+        configure_ssh
+        setup_motd
+        SECURITY_STATUS="Hardened"
     fi
 
     if ask_question "Install Essential Utils (Git/Curl)?"; then
