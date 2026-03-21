@@ -235,6 +235,23 @@ EOF
     log_success "Backup script installed at /usr/local/bin/linuxinit-backup.sh (Cron: 3 AM daily)."
 }
 
+setup_healthcheck() {
+    log_info "Setting up auto-heal healthchecks..."
+    cat <<'EOF' > /usr/local/bin/linuxinit-check.sh
+#!/bin/bash
+services=("nginx" "docker" "ssh" "postgresql" "redis-server")
+for s in "${services[@]}"; do
+    if systemctl is-active --quiet "$s"; then
+        continue
+    fi
+    systemctl restart "$s"
+done
+EOF
+    chmod +x /usr/local/bin/linuxinit-check.sh
+    (crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/linuxinit-check.sh") | crontab -
+    log_success "Healthcheck script installed (Cron: every 5 minutes)."
+}
+
 cleanup() {
     log_info "Cleaning up redundant packages..."
     apt-get autoremove -y && apt-get autoclean -y
@@ -335,6 +352,10 @@ main() {
 
     if ask_question "Enable Automated Backups (Postgres/Redis)?"; then
         setup_backups
+    fi
+
+    if ask_question "Enable Auto-Healing Healthchecks?"; then
+        setup_healthcheck
     fi
 
     if ask_question "Install Essential Utils (Git/Curl)?"; then
