@@ -16,6 +16,17 @@ log_success() { printf "${GREEN}[OK]${NC}   %s\n" "$1"; }
 log_warn()    { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
 log_error()   { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
 
+check_hardware() {
+    log_info "Analyzing system resources..."
+    CPU_CORES=$(nproc)
+    TOTAL_RAM=$(free -m | grep Mem | awk '{print $2}')
+    DISK_USAGE=$(df -h / | tail -1 | awk '{print $5}' | sed 's/%//')
+    log_info "CPU: $CPU_CORES cores | RAM: ${TOTAL_RAM}MB | Disk usage: ${DISK_USAGE}%"
+    if [ "$DISK_USAGE" -gt 80 ]; then
+        log_warn "Disk usage is high ($DISK_USAGE%). Cleanup recommended."
+    fi
+}
+
 show_help() {
     echo "Usage: $0 [options]"
     echo ""
@@ -35,6 +46,19 @@ while [[ $# -gt 0 ]]; do
         *)                POSITIONAL+=("$1"); shift ;;
     esac
 done
+
+check_distro() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$ID
+    else
+        log_error "Unsupported distribution."
+        exit 1
+    fi
+    if [[ "$OS" != "ubuntu" && "$OS" != "debian" ]]; then
+        log_warn "This script is optimized for Ubuntu/Debian. Continuing with $OS anyway..."
+    fi
+}
 
 check_privileges() {
     if [[ $EUID -ne 0 ]]; then
@@ -83,6 +107,39 @@ update_system() {
     log_success "System updated."
 }
 
+setup_basics() {
+    log_info "Configuring system basics (Timezone, NTP, Autoupdates)..."
+    if ask_question "Update Timezone?"; then
+        dpkg-reconfigure tzdata
+    fi
+    apt-get install -y chrony unattended-upgrades
+    systemctl enable --now chrony
+    log_info "Enabling automatic security updates..."
+    echo 'Unattended-Upgrade::Allowed-Origins { "${distro_id}:${distro_codename}-security"; };' > /etc/apt/apt.conf.d/50unattended-upgrades
+    log_success "System basics configured."
+}
+
+create_ssh_user() {
+    log_info "Setting up a non-root sudo user..."
+    printf "${YELLOW}[?]${NC} Enter username for the new user: "
+    read -r username
+    if id "$username" &>/dev/null; then
+        log_warn "User $username already exists. Skipping creation."
+    else
+        useradd -m -s /bin/bash "$username"
+        usermod -aG sudo "$username"
+        log_success "User $username created and added to sudoers."
+        if [ -d /root/.ssh ]; then
+            mkdir -p "/home/$username/.ssh"
+            cp /root/.ssh/authorized_keys "/home/$username/.ssh/" || true
+            chown -R "$username:$username" "/home/$username/.ssh"
+            chmod 700 "/home/$username/.ssh"
+            chmod 600 "/home/$username/.ssh/authorized_keys" || true
+            log_success "SSH keys mirrored from root to $username."
+        fi
+    fi
+}
+
 install_monitoring() {
     log_info "Installing mandatory monitoring tools (htop, btop, etc.)..."
     apt-get install -y htop btop iotop sysstat glances net-tools
@@ -98,6 +155,8 @@ install_productivity() {
         grep -q "alias dc=" "$BASHRC" || echo "alias dc='docker compose'" >> "$BASHRC"
         grep -q "alias update=" "$BASHRC" || echo "alias update='sudo apt update && sudo apt upgrade -y'" >> "$BASHRC"
         grep -q "alias ports=" "$BASHRC" || echo "alias ports='sudo lsof -i -P -n | grep LISTEN'" >> "$BASHRC"
+        grep -q "alias logssh=" "$BASHRC" || echo "alias logssh='sudo tail -f /var/log/auth.log'" >> "$BASHRC"
+        grep -q "alias sysstat=" "$BASHRC" || echo "alias sysstat='btop'" >> "$BASHRC"
         log_success "Global aliases added to $BASHRC."
     fi
 }
@@ -252,6 +311,21 @@ EOF
     log_success "Healthcheck script installed (Cron: every 5 minutes)."
 }
 
+setup_docker_templates() {
+    log_info "Generating Docker Compose templates..."
+    mkdir -p /opt/linuxinit/templates
+    cat <<'EOF' > /opt/linuxinit/templates/docker-compose-app.yml
+version: '3.8'
+services:
+  app:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    restart: always
+EOF
+    log_success "Templates created in /opt/linuxinit/templates."
+}
+
 cleanup() {
     log_info "Cleaning up redundant packages..."
     apt-get autoremove -y && apt-get autoclean -y
@@ -279,16 +353,21 @@ main() {
     printf "\n"
 
     check_privileges
+    check_distro
+    check_hardware
     update_system
     install_monitoring
 
     if [[ "$FORCE_YES" == false ]] && command -v whiptail >/dev/null; then
         CHOICES=$(whiptail --title "linuxInit - Module Selection" --checklist \
-        "Space to select/deselect, Enter to confirm" 20 60 15 \
+        "Space to select/deselect, Enter to confirm" 25 80 18 \
+        "BASICS" "Timezone, NTP, Autoupdates" ON \
+        "USER" "Create Non-Root Sudo User" ON \
         "SWAP" "Create 2GB Swap File" ON \
         "ZSH" "Install Zsh & Aliases" ON \
-        "PYTHON" "Install Python stack" OFF \
         "DOCKER" "Install Docker Engine" OFF \
+        "DOCKER_TMP" "Generate Docker Templates" OFF \
+        "PYTHON" "Install Python stack" OFF \
         "NODE" "Install Node.js (LTS)" OFF \
         "RUST" "Install Rust (rustup)" OFF \
         "GO" "Install Golang" OFF \
@@ -301,10 +380,13 @@ main() {
         "TOOLS" "Neovim & Tmux" ON \
         "UTILS" "Essential Utils (Git/Curl)" ON 3>&1 1>&2 2>&3)
 
+        [[ "$CHOICES" == *"BASICS"* ]] && setup_basics
+        [[ "$CHOICES" == *"USER"* ]] && create_ssh_user
         [[ "$CHOICES" == *"SWAP"* ]] && { setup_swap; SWAP_STATUS="Created"; }
         [[ "$CHOICES" == *"ZSH"* ]] && { install_productivity; ZSH_STATUS="Installed"; }
-        [[ "$CHOICES" == *"PYTHON"* ]] && { install_python; PYTHON_STATUS="Installed"; }
         [[ "$CHOICES" == *"DOCKER"* ]] && { install_docker; DOCKER_STATUS="Installed"; }
+        [[ "$CHOICES" == *"DOCKER_TMP"* ]] && setup_docker_templates
+        [[ "$CHOICES" == *"PYTHON"* ]] && { install_python; PYTHON_STATUS="Installed"; }
         [[ "$CHOICES" == *"NODE"* ]] && { install_node; NODE_STATUS="Installed"; }
         [[ "$CHOICES" == *"RUST"* ]] && { install_rust; RUST_STATUS="Installed"; }
         [[ "$CHOICES" == *"GO"* ]] && { install_go; GO_STATUS="Installed"; }

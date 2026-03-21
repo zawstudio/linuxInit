@@ -4,18 +4,18 @@ A high-performance, expert-grade Bash script designed to configure and harden fr
 
 ## ✨ Advanced Features
 
-- **🚀 System Optimization**: Automated **Swap File** (2GB) and **Sysctl Tuning** for low-resource VPS.
-- **🛡️ Security Hardening**: **SSH Hardening**, **UFW Firewall**, and **Fail2Ban** protection.
+- **🚀 System Optimization**: Automated **Swap File**, **Sysctl Tuning**, and **Hardware Analysis**.
+- **🛡️ Security Hardening**: **SSH Hardening**, **User Management** (Non-root sudo), **UFW**, and **Fail2Ban**.
 - **⚡ Productivity Stack**:
   - **Premium Shell**: Optional **Zsh** installation.
-  - **Quick Aliases**: High-value workspace shortcuts (`ll`, `dc`, `ports`).
+  - **Expert Aliases**: Shortcuts for logs (`logssh`), listeners (`ports`), and monitoring.
 - **🛠️ Modular Engines**:
-  - **Languages**: Python (Pip/Venv), Node.js (LTS), Rust (rustup), and Go.
-  - **Infrastructure**: Docker Engine & Compose, Nginx (SSL via **Certbot**).
+  - **Languages**: Python, Node.js, Rust, and Go.
+  - **Infrastructure**: Docker Engine & **Compose Templates**, Nginx (SSL via Certbot).
   - **Databases**: PostgreSQL and Redis with automated **daily backups**.
 - **📊 Professional Monitoring**: Includes `htop`, `btop`, `glances`, and `sysstat`.
-- **🏥 Maintenance**: Automated **Auto-Heal** healthchecks (every 5 mins).
-- **🎨 Automation**: Unattended mode via `-y` / `--yes` flags.
+- **🏥 Maintenance**: Automated **Auto-Heal** healthchecks and **Unattended Upgrades**.
+- **🎨 Automation**: **Visual Select Menu** (whiptail) and Unattended mode (`-y`).
 
 ## 🚀 Quick Usage
 
