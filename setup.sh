@@ -282,85 +282,116 @@ main() {
     update_system
     install_monitoring
 
-    log_info "Starting selection process..."
-    
-    if ask_question "Create 2GB Swap File?"; then
-        setup_swap
-        SWAP_STATUS="Created"
-    fi
+    if [[ "$FORCE_YES" == false ]] && command -v whiptail >/dev/null; then
+        CHOICES=$(whiptail --title "linuxInit - Module Selection" --checklist \
+        "Space to select/deselect, Enter to confirm" 20 60 15 \
+        "SWAP" "Create 2GB Swap File" ON \
+        "ZSH" "Install Zsh & Aliases" ON \
+        "PYTHON" "Install Python stack" OFF \
+        "DOCKER" "Install Docker Engine" OFF \
+        "NODE" "Install Node.js (LTS)" OFF \
+        "RUST" "Install Rust (rustup)" OFF \
+        "GO" "Install Golang" OFF \
+        "DB" "Databases (Postgres/Redis)" OFF \
+        "NGINX" "Install Nginx Server" OFF \
+        "SSL" "Setup SSL (Certbot)" OFF \
+        "HARDEN" "Security Hardening" ON \
+        "BACKUP" "Automated Backups" OFF \
+        "HEALTH" "Auto-Heal Healthchecks" ON \
+        "TOOLS" "Neovim & Tmux" ON \
+        "UTILS" "Essential Utils (Git/Curl)" ON 3>&1 1>&2 2>&3)
 
-    if ask_question "Install Zsh & Workspace Aliases?"; then
-        install_productivity
-        ZSH_STATUS="Installed"
-    fi
+        [[ "$CHOICES" == *"SWAP"* ]] && { setup_swap; SWAP_STATUS="Created"; }
+        [[ "$CHOICES" == *"ZSH"* ]] && { install_productivity; ZSH_STATUS="Installed"; }
+        [[ "$CHOICES" == *"PYTHON"* ]] && { install_python; PYTHON_STATUS="Installed"; }
+        [[ "$CHOICES" == *"DOCKER"* ]] && { install_docker; DOCKER_STATUS="Installed"; }
+        [[ "$CHOICES" == *"NODE"* ]] && { install_node; NODE_STATUS="Installed"; }
+        [[ "$CHOICES" == *"RUST"* ]] && { install_rust; RUST_STATUS="Installed"; }
+        [[ "$CHOICES" == *"GO"* ]] && { install_go; GO_STATUS="Installed"; }
+        [[ "$CHOICES" == *"DB"* ]] && { install_databases; DB_STATUS="Installed"; }
+        [[ "$CHOICES" == *"NGINX"* ]] && { install_nginx; NGINX_STATUS="Installed"; }
+        [[ "$CHOICES" == *"SSL"* ]] && { install_certbot; }
+        [[ "$CHOICES" == *"HARDEN"* ]] && { configure_sysctl; configure_ssh; setup_motd; SECURITY_STATUS="Hardened"; }
+        [[ "$CHOICES" == *"BACKUP"* ]] && { setup_backups; }
+        [[ "$CHOICES" == *"HEALTH"* ]] && { setup_healthcheck; }
+        [[ "$CHOICES" == *"TOOLS"* ]] && { install_editor_tools; TOOLS_STATUS="Installed"; }
+        [[ "$CHOICES" == *"UTILS"* ]] && { install_utils; UTILS_STATUS="Installed"; }
+    else
+        log_info "Starting linear selection process..."
+        
+        if ask_question "Create 2GB Swap File?"; then
+            setup_swap
+            SWAP_STATUS="Created"
+        fi
 
-    if ask_question "Install Python stack?"; then
-        install_python
-        PYTHON_STATUS="Installed"
-    fi
+        if ask_question "Install Zsh & Workspace Aliases?"; then
+            install_productivity
+            ZSH_STATUS="Installed"
+        fi
 
-    if ask_question "Install Docker Suite?"; then
-        install_docker
-        DOCKER_STATUS="Installed"
-    fi
+        if ask_question "Install Python stack?"; then
+            install_python
+            PYTHON_STATUS="Installed"
+        fi
 
-    if ask_question "Install Node.js (LTS)?"; then
-        install_node
-        NODE_STATUS="Installed"
-    fi
+        if ask_question "Install Docker Suite?"; then
+            install_docker
+            DOCKER_STATUS="Installed"
+        fi
 
-    if ask_question "Install Rust (rustup)?"; then
-        install_rust
-        RUST_STATUS="Installed"
-    fi
+        if ask_question "Install Node.js (LTS)?"; then
+            install_node
+            NODE_STATUS="Installed"
+        fi
 
-    if ask_question "Install Golang?"; then
-        install_go
-        GO_STATUS="Installed"
-    fi
+        if ask_question "Install Rust (rustup)?"; then
+            install_rust
+            RUST_STATUS="Installed"
+        fi
 
-    if ask_question "Install Databases (Postgres/Redis)?"; then
-        install_databases
-        DB_STATUS="Installed"
-    fi
+        if ask_question "Install Golang?"; then
+            install_go
+            GO_STATUS="Installed"
+        fi
 
-    if ask_question "Install Nginx Server?"; then
-        install_nginx
-        NGINX_STATUS="Installed"
-    fi
+        if ask_question "Install Databases (Postgres/Redis)?"; then
+            install_databases
+            DB_STATUS="Installed"
+        fi
 
-    if ask_question "Install Security (UFW/Fail2Ban)?"; then
-        install_security
-        SECURITY_STATUS="Installed"
-    fi
+        if ask_question "Install Nginx Server?"; then
+            install_nginx
+            NGINX_STATUS="Installed"
+        fi
 
-    if ask_question "Install Neovim & Tmux?"; then
-        install_editor_tools
-        TOOLS_STATUS="Installed"
-    fi
+        if ask_question "Apply Security Hardening (SSH/Sysctl)?"; then
+            configure_sysctl
+            configure_ssh
+            setup_motd
+            SECURITY_STATUS="Hardened"
+        fi
 
-    if ask_question "Apply Security Hardening (SSH/Sysctl)?"; then
-        configure_sysctl
-        configure_ssh
-        setup_motd
-        SECURITY_STATUS="Hardened"
-    fi
+        if ask_question "Setup SSL (Certbot) for Nginx?"; then
+            install_certbot
+        fi
 
-    if ask_question "Setup SSL (Certbot) for Nginx?"; then
-        install_certbot
-    fi
+        if ask_question "Enable Automated Backups (Postgres/Redis)?"; then
+            setup_backups
+        fi
 
-    if ask_question "Enable Automated Backups (Postgres/Redis)?"; then
-        setup_backups
-    fi
+        if ask_question "Enable Auto-Healing Healthchecks?"; then
+            setup_healthcheck
+        fi
 
-    if ask_question "Enable Auto-Healing Healthchecks?"; then
-        setup_healthcheck
-    fi
+        if ask_question "Install Neovim & Tmux?"; then
+            install_editor_tools
+            TOOLS_STATUS="Installed"
+        fi
 
-    if ask_question "Install Essential Utils (Git/Curl)?"; then
-        install_utils
-        UTILS_STATUS="Installed"
+        if ask_question "Install Essential Utils (Git/Curl)?"; then
+            install_utils
+            UTILS_STATUS="Installed"
+        fi
     fi
 
     cleanup
