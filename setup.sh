@@ -8,108 +8,171 @@ RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+FORCE_YES=false
+SKIP_UPDATE=false
+
+log_info()    { printf "${CYAN}[INFO]${NC} %s\n" "$1"; }
+log_success() { printf "${GREEN}[OK]${NC}   %s\n" "$1"; }
+log_warn()    { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
+log_error()   { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
+
+show_help() {
+    echo "Usage: $0 [options]"
+    echo ""
+    echo "Options:"
+    echo "  -y, --yes      Assume 'yes' to all prompts (unattended mode)"
+    echo "  --skip-update  Skip system update and upgrade"
+    echo "  -h, --help     Show this help message"
+    echo ""
+}
+
+POSITIONAL=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -y|--yes)         FORCE_YES=true; shift ;;
+        --skip-update)    SKIP_UPDATE=true; shift ;;
+        -h|--help)        show_help; exit 0 ;;
+        *)                POSITIONAL+=("$1"); shift ;;
+    esac
+done
+
 check_privileges() {
     if [[ $EUID -ne 0 ]]; then
-        printf "${RED}Error: This script must be run as root.${NC}\n"
+        log_error "This script must be run as root."
         exit 1
+    fi
+}
+
+ask_question() {
+    local prompt="$1"
+    local default="${2:-n}"
+    if [[ "$FORCE_YES" == true ]]; then
+        return 0
+    fi
+    printf "${YELLOW}[?]${NC} %s [%s]: " "$prompt" "$default"
+    read -r response || response="$default"
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        return 0
+    else
+        return 1
     fi
 }
 
 setup_swap() {
     if ! grep -q "swapfile" /etc/fstab; then
-        printf "${CYAN}Creating 2GB swap file for system stability...${NC}\n"
+        log_info "Creating 2GB swap file for system stability..."
         fallocate -l 2G /swapfile
         chmod 600 /swapfile
         mkswap /swapfile
         swapon /swapfile
         echo '/swapfile none swap sw 0 0' >> /etc/fstab
+        log_success "Swap file created and enabled."
+    else
+        log_info "Swap file already exists. Skipping."
     fi
 }
 
 update_system() {
-    printf "${CYAN}Performing full system update and upgrade...${NC}\n"
+    if [[ "$SKIP_UPDATE" == true ]]; then
+        log_warn "Skipping system update as requested."
+        return
+    fi
+    log_info "Performing full system update and upgrade..."
     apt-get update && apt-get upgrade -y
     apt-get install -y curl gnupg ca-certificates lsb-release
+    log_success "System updated."
 }
 
 install_monitoring() {
-    printf "${CYAN}Installing mandatory monitoring tools...${NC}\n"
+    log_info "Installing mandatory monitoring tools (htop, btop, etc.)..."
     apt-get install -y htop btop iotop sysstat glances net-tools
+    log_success "Monitoring tools installed."
 }
 
 install_productivity() {
-    printf "${CYAN}Installing Zsh and productivity aliases...${NC}\n"
+    log_info "Installing Zsh and productivity aliases..."
     apt-get install -y zsh
     if [ -n "${SUDO_USER:-}" ]; then
         BASHRC="/home/$SUDO_USER/.bashrc"
-        echo "alias ll='ls -lah'" >> "$BASHRC"
-        echo "alias dc='docker compose'" >> "$BASHRC"
-        echo "alias update='sudo apt update && sudo apt upgrade -y'" >> "$BASHRC"
-        echo "alias ports='sudo lsof -i -P -n | grep LISTEN'" >> "$BASHRC"
-        printf "${YELLOW}Global aliases added to $BASHRC.${NC}\n"
+        grep -q "alias ll=" "$BASHRC" || echo "alias ll='ls -lah'" >> "$BASHRC"
+        grep -q "alias dc=" "$BASHRC" || echo "alias dc='docker compose'" >> "$BASHRC"
+        grep -q "alias update=" "$BASHRC" || echo "alias update='sudo apt update && sudo apt upgrade -y'" >> "$BASHRC"
+        grep -q "alias ports=" "$BASHRC" || echo "alias ports='sudo lsof -i -P -n | grep LISTEN'" >> "$BASHRC"
+        log_success "Global aliases added to $BASHRC."
     fi
 }
 
 install_python() {
-    printf "${CYAN}Installing Python3 development stack...${NC}\n"
+    log_info "Installing Python3 development stack..."
     apt-get install -y python3 python3-pip python3-venv
+    log_success "Python3 stack installed."
 }
 
 install_docker() {
-    printf "${CYAN}Installing Docker Engine and latest Compose...${NC}\n"
+    log_info "Installing Docker Engine and latest Compose..."
     curl -fsSL https://get.docker.com | sh
     if [ -n "${SUDO_USER:-}" ]; then
         usermod -aG docker "$SUDO_USER"
-        printf "${YELLOW}User $SUDO_USER added to 'docker' group.${NC}\n"
+        log_success "User $SUDO_USER added to 'docker' group."
     fi
+    log_success "Docker Suite installed."
 }
 
 install_node() {
-    printf "${CYAN}Installing Node.js LTS via NodeSource...${NC}\n"
+    log_info "Installing Node.js LTS via NodeSource..."
     curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
     apt-get install -y nodejs
+    log_success "Node.js installed."
 }
 
 install_rust() {
-    printf "${CYAN}Installing Rust via rustup.rs...${NC}\n"
+    log_info "Installing Rust via rustup.rs..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    log_success "Rust installed."
 }
 
 install_go() {
-    printf "${CYAN}Installing Golang...${NC}\n"
+    log_info "Installing Golang..."
     apt-get install -y golang-go
+    log_success "Golang installed."
 }
 
 install_databases() {
-    printf "${CYAN}Installing Database Suite (PostgreSQL & Redis)...${NC}\n"
+    log_info "Installing Database Suite (PostgreSQL & Redis)..."
     apt-get install -y postgresql postgresql-contrib redis-server
+    log_success "Databases installed."
 }
 
 install_nginx() {
-    printf "${CYAN}Installing Nginx Web Server...${NC}\n"
+    log_info "Installing Nginx Web Server..."
     apt-get install -y nginx
+    log_success "Nginx installed."
 }
 
 install_security() {
-    printf "${CYAN}Installing Security Suite (UFW & Fail2Ban)...${NC}\n"
+    log_info "Installing Security Suite (UFW & Fail2Ban)..."
     apt-get install -y ufw fail2ban
     ufw allow ssh
     ufw --force enable
+    log_success "Security Suite configured."
 }
 
 install_editor_tools() {
-    printf "${CYAN}Installing Developer Tools (Neovim & Tmux)...${NC}\n"
+    log_info "Installing Developer Tools (Neovim & Tmux)..."
     apt-get install -y neovim tmux
+    log_success "Editor tools installed."
 }
 
 install_utils() {
-    printf "${CYAN}Installing essential utilities...${NC}\n"
+    log_info "Installing essential utilities..."
     apt-get install -y git curl wget unzip build-essential
+    log_success "Utilities installed."
 }
 
 cleanup() {
-    printf "${CYAN}Cleaning up redundant packages...${NC}\n"
+    log_info "Cleaning up redundant packages..."
     apt-get autoremove -y && apt-get autoclean -y
+    log_success "Cleanup complete."
 }
 
 SWAP_STATUS="Skipped"
@@ -129,95 +192,71 @@ main() {
     clear
     printf "\n"
     printf "${CYAN}   linuxInit - ULTIMATE LINUX SETUP       ${NC}\n"
+    printf "   Expert Configuration for VPS & Homelab  \n"
     printf "\n"
 
     check_privileges
     update_system
     install_monitoring
 
-    printf "\n${YELLOW}Advanced & Optional Selection:${NC}\n"
-    printf "\n"
+    log_info "Starting selection process..."
     
-    printf "Create 2GB Swap File? [y/N]: "
-    read -r swap_q || swap_q="n"
-    if [[ "$swap_q" =~ ^[Yy]$ ]]; then
+    if ask_question "Create 2GB Swap File?"; then
         setup_swap
         SWAP_STATUS="Created"
     fi
 
-    printf "Install Zsh & Workspace Aliases? [y/N]: "
-    read -r zsh_q || zsh_q="n"
-    if [[ "$zsh_q" =~ ^[Yy]$ ]]; then
+    if ask_question "Install Zsh & Workspace Aliases?"; then
         install_productivity
         ZSH_STATUS="Installed"
     fi
 
-    printf "Install Python stack? [y/N]: "
-    read -r python_q || python_q="n"
-    if [[ "$python_q" =~ ^[Yy]$ ]]; then
+    if ask_question "Install Python stack?"; then
         install_python
         PYTHON_STATUS="Installed"
     fi
 
-    printf "Install Docker Suite? [y/N]: "
-    read -r docker_q || docker_q="n"
-    if [[ "$docker_q" =~ ^[Yy]$ ]]; then
+    if ask_question "Install Docker Suite?"; then
         install_docker
         DOCKER_STATUS="Installed"
     fi
 
-    printf "Install Node.js (LTS)? [y/N]: "
-    read -r node_q || node_q="n"
-    if [[ "$node_q" =~ ^[Yy]$ ]]; then
+    if ask_question "Install Node.js (LTS)?"; then
         install_node
         NODE_STATUS="Installed"
     fi
 
-    printf "Install Rust (rustup)? [y/N]: "
-    read -r rust_q || rust_q="n"
-    if [[ "$rust_q" =~ ^[Yy]$ ]]; then
+    if ask_question "Install Rust (rustup)?"; then
         install_rust
         RUST_STATUS="Installed"
     fi
 
-    printf "Install Golang? [y/N]: "
-    read -r go_q || go_q="n"
-    if [[ "$go_q" =~ ^[Yy]$ ]]; then
+    if ask_question "Install Golang?"; then
         install_go
         GO_STATUS="Installed"
     fi
 
-    printf "Install Databases (Postgres/Redis)? [y/N]: "
-    read -r db_q || db_q="n"
-    if [[ "$db_q" =~ ^[Yy]$ ]]; then
+    if ask_question "Install Databases (Postgres/Redis)?"; then
         install_databases
         DB_STATUS="Installed"
     fi
 
-    printf "Install Nginx Server? [y/N]: "
-    read -r nginx_q || nginx_q="n"
-    if [[ "$nginx_q" =~ ^[Yy]$ ]]; then
+    if ask_question "Install Nginx Server?"; then
         install_nginx
         NGINX_STATUS="Installed"
     fi
 
-    printf "Install Security (UFW/Fail2Ban)? [y/N]: "
-    read -r security_q || security_q="n"
-    if [[ "$security_q" =~ ^[Yy]$ ]]; then
+    if ask_question "Install Security (UFW/Fail2Ban)?"; then
         install_security
         SECURITY_STATUS="Installed"
     fi
 
-    printf "Install Neovim & Tmux? [y/N]: "
-    read -r tools_q || tools_q="n"
-    if [[ "$tools_q" =~ ^[Yy]$ ]]; then
+    if ask_question "Install Neovim & Tmux?"; then
         install_editor_tools
         TOOLS_STATUS="Installed"
     fi
 
-    printf "Install Git/Curl/Wget/Unzip? [y/N]: "
-    read -r utils_q || utils_q="n"
-    if [[ "$utils_q" =~ ^[Yy]$ ]]; then
+    if ask_question "Install Essential Utils (Git/Curl)?"; then
         install_utils
         UTILS_STATUS="Installed"
     fi
@@ -242,8 +281,8 @@ main() {
     printf "%-22s %s\n" "Workspace Tools:" "$TOOLS_STATUS"
     printf "%-22s %s\n" "Utility Tools:" "$UTILS_STATUS"
     printf "\n"
-    printf "${YELLOW}Action: Restart session to apply Zsh/Docker changes.${NC}\n"
-    printf "${GREEN}linuxInit execution finished successfully!${NC}\n"
+    log_info "Action: Restart session to apply Zsh/Docker changes."
+    log_success "linuxInit execution finished successfully!"
     printf "\n"
 }
 
