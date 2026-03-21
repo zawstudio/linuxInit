@@ -4,17 +4,18 @@ A high-performance, expert-grade Bash script designed to configure and harden fr
 
 ## ✨ Advanced Features
 
-- **🚀 System Optimization**: Automatic **Swap File** creation (2GB) for stability on low-resource VPS.
-- **🛡️ Security Hardening**: Automated **UFW Firewall** (pre-set for SSH) and **Fail2Ban** for intrusion prevention.
+- **🚀 System Optimization**: Automated **Swap File** (2GB) and **Sysctl Tuning** for low-resource VPS.
+- **🛡️ Security Hardening**: **SSH Hardening**, **UFW Firewall**, and **Fail2Ban** protection.
 - **⚡ Productivity Stack**:
   - **Premium Shell**: Optional **Zsh** installation.
-  - **Quick Aliases**: High-value workspace shortcuts (`ll`, `dc` for docker compose, `ports` for listener checks).
+  - **Quick Aliases**: High-value workspace shortcuts (`ll`, `dc`, `ports`).
 - **🛠️ Modular Engines**:
   - **Languages**: Python (Pip/Venv), Node.js (LTS), Rust (rustup), and Go.
-  - **Infrastructure**: Docker Engine & Docker Compose, Nginx.
-  - **Databases**: PostgreSQL and Redis.
+  - **Infrastructure**: Docker Engine & Compose, Nginx (SSL via **Certbot**).
+  - **Databases**: PostgreSQL and Redis with automated **daily backups**.
 - **📊 Professional Monitoring**: Includes `htop`, `btop`, `glances`, and `sysstat`.
-- **🎨 Ultra-Minimal UI**: Clean, whitespace-based interface with an executive installation summary.
+- **🏥 Maintenance**: Automated **Auto-Heal** healthchecks (every 5 mins).
+- **🎨 Automation**: Unattended mode via `-y` / `--yes` flags.
 
 ## 🚀 Quick Usage
 
