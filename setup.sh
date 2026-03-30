@@ -158,6 +158,41 @@ install_btop() {
     log_success "btop installed."
 }
 
+run_speedtest() {
+    log_info "Running internet speed test..."
+    if ! command -v speedtest-cli &>/dev/null; then
+        log_warn "speedtest-cli not found. Installing..."
+        apt-get install -y speedtest-cli
+    fi
+    speedtest-cli --simple
+}
+
+optimize_logs() {
+    log_info "Optimizing system logs..."
+    journalctl --vacuum-time=2d
+    find /var/log -type f -name "*.log" -exec truncate -s 0 {} +
+    log_success "Logs truncated and journal vacuumed (2 days kept)."
+}
+
+maintenance_menu() {
+    while true; do
+        M_CHOICE=$(whiptail --title "linuxInit - Maintenance & Cleanup" --menu \
+        "Select maintenance task:" 18 60 8 \
+        "SPEED" "Run Speedtest (Check bandwidth)" \
+        "CLEAN" "Full Apt & Log Cleanup" \
+        "DISK" "Deep Disk Usage Analysis" \
+        "BACK" "<- Back to Main Menu" 3>&1 1>&2 2>&3) || break
+
+        case "$M_CHOICE" in
+            "SPEED") run_speedtest; read -p "Press Enter to continue..." ;;
+            "CLEAN") cleanup; optimize_logs; read -p "Press Enter to continue..." ;;
+            "DISK") du -sh /var/log /var/lib/docker /home /root 2>/dev/null; read -p "Press Enter to continue..." ;;
+            "BACK") return ;;
+            *) return ;;
+        esac
+    done
+}
+
 install_productivity() {
     log_info "Installing Zsh and productivity aliases..."
     apt-get install -y zsh
@@ -212,6 +247,21 @@ install_databases() {
     log_info "Installing Database Suite (PostgreSQL & Redis)..."
     apt-get install -y postgresql postgresql-contrib redis-server
     log_success "Databases installed."
+}
+
+configure_logrotate() {
+    log_info "Configuring permanent log rotation (max 100MB per file)..."
+    cat <<EOF > /etc/logrotate.d/linuxinit
+/var/log/*.log {
+    size 100M
+    rotate 5
+    compress
+    delaycompress
+    missingok
+    notifempty
+}
+EOF
+    log_success "Logrotate policy applied."
 }
 
 install_nginx() {
@@ -358,160 +408,195 @@ TOOLS_STATUS="Skipped"
 UTILS_STATUS="Skipped"
 
 main() {
-    clear
-    printf "\n"
-    printf "${CYAN}   linuxInit - ULTIMATE LINUX SETUP       ${NC}\n"
-    printf "   Expert Configuration for VPS & Homelab  \n"
-    printf "\n"
+    while true; do
+        clear
+        printf "\n"
+        printf "${CYAN}   linuxInit - ULTIMATE LINUX SETUP       ${NC}\n"
+        printf "   Expert Configuration for VPS & Homelab  \n"
+        printf "\n"
 
-    check_privileges
-    check_distro
-    check_hardware
+        check_privileges
+        check_distro
+        check_hardware
 
-    if [[ "$FORCE_YES" == false ]] && command -v whiptail >/dev/null; then
-        CHOICES=$(whiptail --title "linuxInit - Module Selection" --checklist \
-        "Select modules to install (Space = select, Enter = confirm)" 25 80 18 \
-        "UPDATE" "Full System Update & Upgrade" OFF \
-        "HTOP" "System Monitor (htop)" OFF \
-        "BTOP" "System Monitor (btop)" OFF \
-        "ATOP" "System Monitor (atop)" OFF \
-        "BASICS" "Timezone, NTP, Autoupdates" OFF \
-        "USER" "Create Non-Root Sudo User" OFF \
-        "SWAP" "Create 2GB Swap File" OFF \
-        "ZSH" "Install Zsh & Aliases" OFF \
-        "DOCKER" "Install Docker Engine" OFF \
-        "DOCKER_TMP" "Generate Docker Templates" OFF \
-        "PYTHON" "Install Python stack" OFF \
-        "NODE" "Install Node.js (LTS)" OFF \
-        "RUST" "Install Rust (rustup)" OFF \
-        "GO" "Install Golang" OFF \
-        "DB" "Databases (Postgres/Redis)" OFF \
-        "NGINX" "Install Nginx Server" OFF \
-        "SSL" "Setup SSL (Certbot)" OFF \
-        "HARDEN" "Security Hardening" OFF \
-        "BACKUP" "Automated Backups" OFF \
-        "HEALTH" "Auto-Heal Healthchecks" OFF \
-        "TOOLS" "Neovim & Tmux" OFF \
-        "UTILS" "Essential Utils (Git/Curl)" ON 3>&1 1>&2 2>&3)
+        if [[ "$FORCE_YES" == false ]] && command -v whiptail >/dev/null; then
+            MAIN_MENU=$(whiptail --title "linuxInit - Master Menu" --menu \
+            "Navigate the system configuration:" 15 60 5 \
+            "INSTALL" "Start Modular Installation" \
+            "MAINT" "Maintenance & Cleanup" \
+            "HELP" "Show Help" \
+            "EXIT" "Exit linuxInit" 3>&1 1>&2 2>&3) || exit 0
 
-        [[ "$CHOICES" == *"UPDATE"* ]] && update_system
-        [[ "$CHOICES" == *"HTOP"* ]] && install_htop
-        [[ "$CHOICES" == *"BTOP"* ]] && install_btop
-        [[ "$CHOICES" == *"ATOP"* ]] && install_atop
-        [[ "$CHOICES" == *"BASICS"* ]] && setup_basics
-        [[ "$CHOICES" == *"USER"* ]] && create_ssh_user
-        [[ "$CHOICES" == *"SWAP"* ]] && { setup_swap; SWAP_STATUS="Created"; }
-        [[ "$CHOICES" == *"ZSH"* ]] && { install_productivity; ZSH_STATUS="Installed"; }
-        [[ "$CHOICES" == *"DOCKER"* ]] && { install_docker; DOCKER_STATUS="Installed"; }
-        [[ "$CHOICES" == *"DOCKER_TMP"* ]] && setup_docker_templates
-        [[ "$CHOICES" == *"PYTHON"* ]] && { install_python; PYTHON_STATUS="Installed"; }
-        [[ "$CHOICES" == *"NODE"* ]] && { install_node; NODE_STATUS="Installed"; }
-        [[ "$CHOICES" == *"RUST"* ]] && { install_rust; RUST_STATUS="Installed"; }
-        [[ "$CHOICES" == *"GO"* ]] && { install_go; GO_STATUS="Installed"; }
-        [[ "$CHOICES" == *"DB"* ]] && { install_databases; DB_STATUS="Installed"; }
-        [[ "$CHOICES" == *"NGINX"* ]] && { install_nginx; NGINX_STATUS="Installed"; }
-        [[ "$CHOICES" == *"SSL"* ]] && { install_certbot; }
-        [[ "$CHOICES" == *"HARDEN"* ]] && { configure_sysctl; configure_ssh; setup_motd; SECURITY_STATUS="Hardened"; }
-        [[ "$CHOICES" == *"BACKUP"* ]] && { setup_backups; }
-        [[ "$CHOICES" == *"HEALTH"* ]] && { setup_healthcheck; }
-        [[ "$CHOICES" == *"TOOLS"* ]] && { install_editor_tools; TOOLS_STATUS="Installed"; }
-        [[ "$CHOICES" == *"UTILS"* ]] && { install_utils; UTILS_STATUS="Installed"; }
-    else
-        log_info "Starting linear selection process..."
-        
-        if ask_question "Perform Full System Update & Upgrade?"; then
-            update_system
+            case "$MAIN_MENU" in
+                "INSTALL") start_installer ;;
+                "MAINT") maintenance_menu ;;
+                "HELP") show_help; read -p "Press Enter to return..." ;;
+                "EXIT") exit 0 ;;
+                *) exit 0 ;;
+            esac
+        else
+            start_linear_installer
+            break
         fi
+    done
+}
 
-        if ask_question "Install htop?"; then
-            install_htop
-        fi
+start_installer() {
+    CHOICES=$(whiptail --title "linuxInit - Installation Selection" --checklist \
+    "Select modules to install (Space = select, Enter = confirm)" 25 80 18 \
+    "UPDATE" "Full System Update & Upgrade" OFF \
+    "HTOP" "System Monitor (htop)" OFF \
+    "BTOP" "System Monitor (btop)" OFF \
+    "ATOP" "System Monitor (atop)" OFF \
+    "BASICS" "Timezone, NTP, Autoupdates" OFF \
+    "USER" "Create Non-Root Sudo User" OFF \
+    "SWAP" "Create 2GB Swap File" OFF \
+    "ZSH" "Install Zsh & Aliases" OFF \
+    "DOCKER" "Install Docker Engine" OFF \
+    "DOCKER_TMP" "Generate Docker Templates" OFF \
+    "PYTHON" "Install Python stack" OFF \
+    "NODE" "Install Node.js (LTS)" OFF \
+    "RUST" "Install Rust (rustup)" OFF \
+    "GO" "Install Golang" OFF \
+    "DB" "Databases (Postgres/Redis)" OFF \
+    "NGINX" "Install Nginx Server" OFF \
+    "SSL" "Setup SSL (Certbot)" OFF \
+    "HARDEN" "Security Hardening" OFF \
+    "BACKUP" "Automated Backups" OFF \
+    "HEALTH" "Auto-Heal Healthchecks" OFF \
+    "LOGROTATE" "Permanent Log Rotation" ON \
+    "TOOLS" "Neovim & Tmux" OFF \
+    "UTILS" "Essential Utils (Git/Curl)" ON 3>&1 1>&2 2>&3) || return
 
-        if ask_question "Install btop?"; then
-            install_btop
-        fi
+    [[ "$CHOICES" == *"UPDATE"* ]] && update_system
+    [[ "$CHOICES" == *"HTOP"* ]] && install_htop
+    [[ "$CHOICES" == *"BTOP"* ]] && install_btop
+    [[ "$CHOICES" == *"ATOP"* ]] && install_atop
+    [[ "$CHOICES" == *"BASICS"* ]] && setup_basics
+    [[ "$CHOICES" == *"USER"* ]] && create_ssh_user
+    [[ "$CHOICES" == *"SWAP"* ]] && { setup_swap; SWAP_STATUS="Created"; }
+    [[ "$CHOICES" == *"ZSH"* ]] && { install_productivity; ZSH_STATUS="Installed"; }
+    [[ "$CHOICES" == *"DOCKER"* ]] && { install_docker; DOCKER_STATUS="Installed"; }
+    [[ "$CHOICES" == *"DOCKER_TMP"* ]] && setup_docker_templates
+    [[ "$CHOICES" == *"PYTHON"* ]] && { install_python; PYTHON_STATUS="Installed"; }
+    [[ "$CHOICES" == *"NODE"* ]] && { install_node; NODE_STATUS="Installed"; }
+    [[ "$CHOICES" == *"RUST"* ]] && { install_rust; RUST_STATUS="Installed"; }
+    [[ "$CHOICES" == *"GO"* ]] && { install_go; GO_STATUS="Installed"; }
+    [[ "$CHOICES" == *"DB"* ]] && { install_databases; DB_STATUS="Installed"; }
+    [[ "$CHOICES" == *"NGINX"* ]] && { install_nginx; NGINX_STATUS="Installed"; }
+    [[ "$CHOICES" == *"SSL"* ]] && { install_certbot; }
+    [[ "$CHOICES" == *"HARDEN"* ]] && { configure_sysctl; configure_ssh; setup_motd; SECURITY_STATUS="Hardened"; }
+    [[ "$CHOICES" == *"BACKUP"* ]] && { setup_backups; }
+    [[ "$CHOICES" == *"HEALTH"* ]] && { setup_healthcheck; }
+    [[ "$CHOICES" == *"LOGROTATE"* ]] && { configure_logrotate; }
+    [[ "$CHOICES" == *"TOOLS"* ]] && { install_editor_tools; TOOLS_STATUS="Installed"; }
+    [[ "$CHOICES" == *"UTILS"* ]] && { install_utils; UTILS_STATUS="Installed"; }
 
-        if ask_question "Install atop?"; then
-            install_atop
-        fi
+    finalize_installation
+}
 
-        if ask_question "Create 2GB Swap File?"; then
-            setup_swap
-            SWAP_STATUS="Created"
-        fi
-
-        if ask_question "Install Zsh & Workspace Aliases?"; then
-            install_productivity
-            ZSH_STATUS="Installed"
-        fi
-
-        if ask_question "Install Python stack?"; then
-            install_python
-            PYTHON_STATUS="Installed"
-        fi
-
-        if ask_question "Install Docker Suite?"; then
-            install_docker
-            DOCKER_STATUS="Installed"
-        fi
-
-        if ask_question "Install Node.js (LTS)?"; then
-            install_node
-            NODE_STATUS="Installed"
-        fi
-
-        if ask_question "Install Rust (rustup)?"; then
-            install_rust
-            RUST_STATUS="Installed"
-        fi
-
-        if ask_question "Install Golang?"; then
-            install_go
-            GO_STATUS="Installed"
-        fi
-
-        if ask_question "Install Databases (Postgres/Redis)?"; then
-            install_databases
-            DB_STATUS="Installed"
-        fi
-
-        if ask_question "Install Nginx Server?"; then
-            install_nginx
-            NGINX_STATUS="Installed"
-        fi
-
-        if ask_question "Apply Security Hardening (SSH/Sysctl)?"; then
-            configure_sysctl
-            configure_ssh
-            setup_motd
-            SECURITY_STATUS="Hardened"
-        fi
-
-        if ask_question "Setup SSL (Certbot) for Nginx?"; then
-            install_certbot
-        fi
-
-        if ask_question "Enable Automated Backups (Postgres/Redis)?"; then
-            setup_backups
-        fi
-
-        if ask_question "Enable Auto-Healing Healthchecks?"; then
-            setup_healthcheck
-        fi
-
-        if ask_question "Install Neovim & Tmux?"; then
-            install_editor_tools
-            TOOLS_STATUS="Installed"
-        fi
-
-        if ask_question "Install Essential Utils (Git/Curl)?"; then
-            install_utils
-            UTILS_STATUS="Installed"
-        fi
+start_linear_installer() {
+    log_info "Starting linear selection process..."
+    
+    if ask_question "Perform Full System Update & Upgrade?"; then
+        update_system
     fi
 
-    cleanup
+    if ask_question "Install htop?"; then
+        install_htop
+    fi
 
+    if ask_question "Install btop?"; then
+        install_btop
+    fi
+
+    if ask_question "Install atop?"; then
+        install_atop
+    fi
+
+    if ask_question "Create 2GB Swap File?"; then
+        setup_swap
+        SWAP_STATUS="Created"
+    fi
+
+    if ask_question "Install Zsh & Workspace Aliases?"; then
+        install_productivity
+        ZSH_STATUS="Installed"
+    fi
+
+    if ask_question "Install Python stack?"; then
+        install_python
+        PYTHON_STATUS="Installed"
+    fi
+
+    if ask_question "Install Docker Suite?"; then
+        install_docker
+        DOCKER_STATUS="Installed"
+    fi
+
+    if ask_question "Install Node.js (LTS)?"; then
+        install_node
+        NODE_STATUS="Installed"
+    fi
+
+    if ask_question "Install Rust (rustup)?"; then
+        install_rust
+        RUST_STATUS="Installed"
+    fi
+
+    if ask_question "Install Golang?"; then
+        install_go
+        GO_STATUS="Installed"
+    fi
+
+    if ask_question "Install Databases (Postgres/Redis)?"; then
+        install_databases
+        DB_STATUS="Installed"
+    fi
+
+    if ask_question "Install Nginx Server?"; then
+        install_nginx
+        NGINX_STATUS="Installed"
+    fi
+
+    if ask_question "Apply Security Hardening (SSH/Sysctl)?"; then
+        configure_sysctl
+        configure_ssh
+        setup_motd
+        SECURITY_STATUS="Hardened"
+    fi
+
+    if ask_question "Setup SSL (Certbot) for Nginx?"; then
+        install_certbot
+    fi
+
+    if ask_question "Enable Automated Backups (Postgres/Redis)?"; then
+        setup_backups
+    fi
+
+    if ask_question "Enable Auto-Healing Healthchecks?"; then
+        setup_healthcheck
+    fi
+
+    if ask_question "Configure Permanent Log Rotation?"; then
+        configure_logrotate
+    fi
+
+    if ask_question "Install Neovim & Tmux?"; then
+        install_editor_tools
+        TOOLS_STATUS="Installed"
+    fi
+
+    if ask_question "Install Essential Utils (Git/Curl)?"; then
+        install_utils
+        UTILS_STATUS="Installed"
+    fi
+
+    finalize_installation
+}
+
+finalize_installation() {
+    cleanup
     clear
     printf "\n"
     printf "${GREEN}        linuxInit COMPLETE                ${NC}\n"
@@ -534,6 +619,7 @@ main() {
     log_info "Action: Restart session to apply Zsh/Docker changes."
     log_success "linuxInit execution finished successfully!"
     printf "\n"
+    read -p "Press Enter to return to main menu..."
 }
 
 main "$@"
