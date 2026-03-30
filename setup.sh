@@ -235,9 +235,9 @@ install_editor_tools() {
 }
 
 install_utils() {
-    log_info "Installing essential utilities..."
-    apt-get install -y git curl wget unzip build-essential
-    log_success "Utilities installed."
+    log_info "Installing essential utilities and network tools..."
+    apt-get install -y git curl wget unzip build-essential speedtest-cli
+    log_success "Utilities and Speedtest-cli installed."
 }
 
 configure_sysctl() {
