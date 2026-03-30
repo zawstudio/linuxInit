@@ -140,10 +140,22 @@ create_ssh_user() {
     fi
 }
 
-install_monitoring() {
-    log_info "Installing mandatory monitoring tools (htop, btop, etc.)..."
-    apt-get install -y htop btop iotop sysstat glances net-tools
-    log_success "Monitoring tools installed."
+install_htop() {
+    log_info "Installing htop..."
+    apt-get install -y htop
+    log_success "htop installed."
+}
+
+install_atop() {
+    log_info "Installing atop..."
+    apt-get install -y atop
+    log_success "atop installed."
+}
+
+install_btop() {
+    log_info "Installing btop..."
+    apt-get install -y btop
+    log_success "btop installed."
 }
 
 install_productivity() {
@@ -355,16 +367,18 @@ main() {
     check_privileges
     check_distro
     check_hardware
-    update_system
-    install_monitoring
 
     if [[ "$FORCE_YES" == false ]] && command -v whiptail >/dev/null; then
         CHOICES=$(whiptail --title "linuxInit - Module Selection" --checklist \
-        "Space to select/deselect, Enter to confirm" 25 80 18 \
-        "BASICS" "Timezone, NTP, Autoupdates" ON \
-        "USER" "Create Non-Root Sudo User" ON \
-        "SWAP" "Create 2GB Swap File" ON \
-        "ZSH" "Install Zsh & Aliases" ON \
+        "Select modules to install (Space = select, Enter = confirm)" 25 80 18 \
+        "UPDATE" "Full System Update & Upgrade" OFF \
+        "HTOP" "System Monitor (htop)" OFF \
+        "BTOP" "System Monitor (btop)" OFF \
+        "ATOP" "System Monitor (atop)" OFF \
+        "BASICS" "Timezone, NTP, Autoupdates" OFF \
+        "USER" "Create Non-Root Sudo User" OFF \
+        "SWAP" "Create 2GB Swap File" OFF \
+        "ZSH" "Install Zsh & Aliases" OFF \
         "DOCKER" "Install Docker Engine" OFF \
         "DOCKER_TMP" "Generate Docker Templates" OFF \
         "PYTHON" "Install Python stack" OFF \
@@ -374,12 +388,16 @@ main() {
         "DB" "Databases (Postgres/Redis)" OFF \
         "NGINX" "Install Nginx Server" OFF \
         "SSL" "Setup SSL (Certbot)" OFF \
-        "HARDEN" "Security Hardening" ON \
+        "HARDEN" "Security Hardening" OFF \
         "BACKUP" "Automated Backups" OFF \
-        "HEALTH" "Auto-Heal Healthchecks" ON \
-        "TOOLS" "Neovim & Tmux" ON \
+        "HEALTH" "Auto-Heal Healthchecks" OFF \
+        "TOOLS" "Neovim & Tmux" OFF \
         "UTILS" "Essential Utils (Git/Curl)" ON 3>&1 1>&2 2>&3)
 
+        [[ "$CHOICES" == *"UPDATE"* ]] && update_system
+        [[ "$CHOICES" == *"HTOP"* ]] && install_htop
+        [[ "$CHOICES" == *"BTOP"* ]] && install_btop
+        [[ "$CHOICES" == *"ATOP"* ]] && install_atop
         [[ "$CHOICES" == *"BASICS"* ]] && setup_basics
         [[ "$CHOICES" == *"USER"* ]] && create_ssh_user
         [[ "$CHOICES" == *"SWAP"* ]] && { setup_swap; SWAP_STATUS="Created"; }
@@ -401,6 +419,22 @@ main() {
     else
         log_info "Starting linear selection process..."
         
+        if ask_question "Perform Full System Update & Upgrade?"; then
+            update_system
+        fi
+
+        if ask_question "Install htop?"; then
+            install_htop
+        fi
+
+        if ask_question "Install btop?"; then
+            install_btop
+        fi
+
+        if ask_question "Install atop?"; then
+            install_atop
+        fi
+
         if ask_question "Create 2GB Swap File?"; then
             setup_swap
             SWAP_STATUS="Created"
@@ -493,6 +527,7 @@ main() {
     printf "%-22s %s\n" "Databases:" "$DB_STATUS"
     printf "%-22s %s\n" "Nginx Server:" "$NGINX_STATUS"
     printf "%-22s %s\n" "Security Suite:" "$SECURITY_STATUS"
+    printf "%-22s %s\n" "Htop/Btop/Atop:" "Installed"
     printf "%-22s %s\n" "Workspace Tools:" "$TOOLS_STATUS"
     printf "%-22s %s\n" "Utility Tools:" "$UTILS_STATUS"
     printf "\n"
