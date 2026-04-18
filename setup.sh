@@ -379,7 +379,67 @@ EOF
     log_success "Hardened Nginx installed and configured."
 }
 
+install_php() {
+    local SELECTED_VER="8.4"
+    if [[ "$FORCE_YES" == false ]]; then
+        SELECTED_VER=$(whiptail --title "PHP Selection" --menu \
+        "Choose PHP version to install (Latest recommended):" 15 60 5 \
+        "8.4" "PHP 8.4 (Newest)" \
+        "8.3" "PHP 8.3" \
+        "8.2" "PHP 8.2" \
+        "8.1" "PHP 8.1" \
+        "7.4" "PHP 7.4 (Legacy)" 3>&1 1>&2 2>&3) || SELECTED_VER="8.4"
+    fi
 
+    log_info "Installing PHP $SELECTED_VER and common extensions..."
+    apt-get install -y software-properties-common
+    if [[ "$OS" == "ubuntu" ]]; then
+        add-apt-repository ppa:ondrej/php -y
+    else
+        curl -sSL https://packages.sury.org/php/README.txt | bash -x
+    fi
+    apt-get update
+    apt-get install -y php${SELECTED_VER} php${SELECTED_VER}-cli php${SELECTED_VER}-fpm php${SELECTED_VER}-common php${SELECTED_VER}-mysql php${SELECTED_VER}-zip php${SELECTED_VER}-gd php${SELECTED_VER}-mbstring php${SELECTED_VER}-curl php${SELECTED_VER}-xml php${SELECTED_VER}-bcmath php${SELECTED_VER}-redis php${SELECTED_VER}-intl php${SELECTED_VER}-sqlite3
+    log_success "PHP $SELECTED_VER installed."
+    PHP_STATUS="Installed ($SELECTED_VER)"
+}
+
+install_mariadb() {
+    log_info "Installing MariaDB Server..."
+    apt-get install -y mariadb-server
+    systemctl enable --now mariadb
+    log_success "MariaDB installed and service enabled."
+}
+
+install_redis() {
+    log_info "Installing Redis Server..."
+    apt-get install -y redis-server
+    systemctl enable --now redis-server
+    log_success "Redis installed and service enabled."
+}
+
+install_composer() {
+    log_info "Installing Composer v2..."
+    if ! command -v php &>/dev/null; then
+        log_warn "PHP not found. Initiating PHP installation for Composer..."
+        install_php
+    fi
+    curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php
+    php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+    log_success "Composer v2 installed globally."
+}
+
+install_pnpm() {
+    log_info "Installing pnpm..."
+    curl -fsSL https://get.pnpm.io/install.sh | SHELL=bash sh -
+    # Adding to global path for root
+    export PNPM_HOME="/root/.local/share/pnpm"
+    case ":$PATH:" in
+        *":$PNPM_HOME:"*) ;;
+        *) export PATH="$PNPM_HOME:$PATH" ;;
+    esac
+    log_success "pnpm installed."
+}
 
 cleanup() {
     log_info "Cleaning up redundant packages..."
@@ -395,6 +455,11 @@ NGINX_STATUS="Skipped"
 MFA_STATUS="Skipped"
 TOOLS_STATUS="Skipped"
 UTILS_STATUS="Skipped"
+PHP_STATUS="Skipped"
+MARIADB_STATUS="Skipped"
+REDIS_STATUS="Skipped"
+COMPOSER_STATUS="Skipped"
+PNPM_STATUS="Skipped"
 
 main() {
     while true; do
@@ -449,7 +514,12 @@ start_installer() {
     "HEALTH" "Auto-Heal Healthchecks" OFF \
     "LOGROTATE" "Permanent Log Rotation" ON \
     "TOOLS" "Neovim & Tmux" OFF \
-    "UTILS" "Essential Utils (Git/Curl)" ON 3>&1 1>&2 2>&3) || return
+    "UTILS" "Essential Utils (Git/Curl)" ON \
+    "PHP" "PHP 8.4 + Extensions" OFF \
+    "MARIADB" "MariaDB Server" OFF \
+    "REDIS" "Redis Server" OFF \
+    "COMPOSER" "Composer v2" OFF \
+    "PNPM" "pnpm Package Manager" OFF 3>&1 1>&2 2>&3) || return
 
     [[ "$CHOICES" == *"UPDATE"* ]] && update_system
     [[ "$CHOICES" == *"HTOP"* ]] && install_htop
@@ -468,6 +538,11 @@ start_installer() {
     [[ "$CHOICES" == *"LOGROTATE"* ]] && configure_logrotate
     [[ "$CHOICES" == *"TOOLS"* ]] && { install_editor_tools; TOOLS_STATUS="Installed"; }
     [[ "$CHOICES" == *"UTILS"* ]] && { install_utils; UTILS_STATUS="Installed"; }
+    [[ "$CHOICES" == *"PHP"* ]] && install_php
+    [[ "$CHOICES" == *"MARIADB"* ]] && { install_mariadb; MARIADB_STATUS="Installed"; }
+    [[ "$CHOICES" == *"REDIS"* ]] && { install_redis; REDIS_STATUS="Installed"; }
+    [[ "$CHOICES" == *"COMPOSER"* ]] && { install_composer; COMPOSER_STATUS="Installed"; }
+    [[ "$CHOICES" == *"PNPM"* ]] && { install_pnpm; PNPM_STATUS="Installed"; }
 
     finalize_installation
 }
@@ -545,6 +620,30 @@ start_linear_installer() {
         UTILS_STATUS="Installed"
     fi
 
+    if ask_question "Install PHP (Choose version)?"; then
+        install_php
+    fi
+
+    if ask_question "Install MariaDB Server?"; then
+        install_mariadb
+        MARIADB_STATUS="Installed"
+    fi
+
+    if ask_question "Install Redis Server?"; then
+        install_redis
+        REDIS_STATUS="Installed"
+    fi
+
+    if ask_question "Install Composer v2?"; then
+        install_composer
+        COMPOSER_STATUS="Installed"
+    fi
+
+    if ask_question "Install pnpm Package Manager?"; then
+        install_pnpm
+        PNPM_STATUS="Installed"
+    fi
+
     finalize_installation
 }
 
@@ -564,6 +663,11 @@ finalize_installation() {
     printf "%-22s %s\n" "Htop/Btop/Atop:" "Installed"
     printf "%-22s %s\n" "Workspace Tools:" "$TOOLS_STATUS"
     printf "%-22s %s\n" "Utility Tools:" "$UTILS_STATUS"
+    printf "%-22s %s\n" "PHP 8.4:" "$PHP_STATUS"
+    printf "%-22s %s\n" "MariaDB:" "$MARIADB_STATUS"
+    printf "%-22s %s\n" "Redis:" "$REDIS_STATUS"
+    printf "%-22s %s\n" "Composer v2:" "$COMPOSER_STATUS"
+    printf "%-22s %s\n" "pnpm:" "$PNPM_STATUS"
     printf "\n"
     log_info "Action: Restart session to apply Zsh/Docker changes."
     log_success "linuxInit execution finished successfully!"

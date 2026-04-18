@@ -9,6 +9,7 @@ A high-performance, expert-grade Bash script designed to configure and harden fr
 - **⚡ Productivity Stack**:
   - **Premium Shell**: Optional **Zsh** installation.
   - **Expert Aliases**: Shortcuts for logs (`logssh`), listeners (`ports`), and system updates.
+  - **Dev Stack**: Support for **PHP (Flexible Versions)**, **Composer v2**, **pnpm**, **MariaDB**, and **Redis**.
 - **📊 Professional Monitoring**: Includes `htop`, `btop`, and `atop`.
 - **🏥 Maintenance**: **SSH 2FA (MFA)**, **Security Audits (Lynis)**, **Auto-Heal**, and **Secured Nginx**.
 - **🎨 Automation**: **Visual Select Menu** (whiptail) and Unattended mode (`-y`).
