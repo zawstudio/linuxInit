@@ -515,6 +515,8 @@ start_installer() {
     "SCREEN" "GNU Screen Multiplexer" ON \
     "SPEEDTEST" "Ookla Speedtest CLI" ON \
     "BUILD" "Build Essential (gcc/make)" OFF \
+    "NLOAD" "nload Traffic Monitor" OFF \
+    "NCDU" "ncdu Disk Analyzer" OFF \
     "PHP" "PHP Selection Menu" OFF \
     "MARIADB" "MariaDB Server" OFF \
     "REDIS" "Redis Server" OFF \
@@ -547,6 +549,8 @@ start_installer() {
     [[ "$CHOICES" == *"SCREEN"* ]] && SELECTED_PKGS+=("screen")
     [[ "$CHOICES" == *"SPEEDTEST"* ]] && SELECTED_PKGS+=("speedtest-cli")
     [[ "$CHOICES" == *"BUILD"* ]] && SELECTED_PKGS+=("build-essential")
+    [[ "$CHOICES" == *"NLOAD"* ]] && SELECTED_PKGS+=("nload")
+    [[ "$CHOICES" == *"NCDU"* ]] && SELECTED_PKGS+=("ncdu")
 
     if [ ${#SELECTED_PKGS[@]} -gt 0 ]; then
         log_info "Installing selected utilities: ${SELECTED_PKGS[*]}..."
@@ -639,6 +643,8 @@ start_linear_installer() {
     ask_question "Install Screen?" && LIN_PKGS+=("screen")
     ask_question "Install Speedtest-cli?" && LIN_PKGS+=("speedtest-cli")
     ask_question "Install Build-Essential (GCC/Make)?" && LIN_PKGS+=("build-essential")
+    ask_question "Install nload Traffic Monitor?" && LIN_PKGS+=("nload")
+    ask_question "Install ncdu Disk Analyzer?" && LIN_PKGS+=("ncdu")
 
     if [ ${#LIN_PKGS[@]} -gt 0 ]; then
         log_info "Installing selected utilities: ${LIN_PKGS[*]}..."
