@@ -186,7 +186,7 @@ maintenance_menu() {
         case "$M_CHOICE" in
             "SPEED") run_speedtest; read -p "Press Enter to continue..." ;;
             "CLEAN") cleanup; optimize_logs; read -p "Press Enter to continue..." ;;
-            "DISK") du -sh /var/log /var/lib/docker /home /root 2>/dev/null; read -p "Press Enter to continue..." ;;
+            "DISK") du -sh /var/log /home /root 2>/dev/null; read -p "Press Enter to continue..." ;;
             "BACK") return ;;
             *) return ;;
         esac
@@ -199,55 +199,14 @@ install_productivity() {
     if [ -n "${SUDO_USER:-}" ]; then
         BASHRC="/home/$SUDO_USER/.bashrc"
         grep -q "alias ll=" "$BASHRC" || echo "alias ll='ls -lah'" >> "$BASHRC"
-        grep -q "alias dc=" "$BASHRC" || echo "alias dc='docker compose'" >> "$BASHRC"
         grep -q "alias update=" "$BASHRC" || echo "alias update='sudo apt update && sudo apt upgrade -y'" >> "$BASHRC"
         grep -q "alias ports=" "$BASHRC" || echo "alias ports='sudo lsof -i -P -n | grep LISTEN'" >> "$BASHRC"
         grep -q "alias logssh=" "$BASHRC" || echo "alias logssh='sudo tail -f /var/log/auth.log'" >> "$BASHRC"
-        grep -q "alias sysstat=" "$BASHRC" || echo "alias sysstat='btop'" >> "$BASHRC"
         log_success "Global aliases added to $BASHRC."
     fi
 }
 
-install_python() {
-    log_info "Installing Python3 development stack..."
-    apt-get install -y python3 python3-pip python3-venv
-    log_success "Python3 stack installed."
-}
 
-install_docker() {
-    log_info "Installing Docker Engine and latest Compose..."
-    curl -fsSL https://get.docker.com | sh
-    if [ -n "${SUDO_USER:-}" ]; then
-        usermod -aG docker "$SUDO_USER"
-        log_success "User $SUDO_USER added to 'docker' group."
-    fi
-    log_success "Docker Suite installed."
-}
-
-install_node() {
-    log_info "Installing Node.js LTS via NodeSource..."
-    curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
-    apt-get install -y nodejs
-    log_success "Node.js installed."
-}
-
-install_rust() {
-    log_info "Installing Rust via rustup.rs..."
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    log_success "Rust installed."
-}
-
-install_go() {
-    log_info "Installing Golang..."
-    apt-get install -y golang-go
-    log_success "Golang installed."
-}
-
-install_databases() {
-    log_info "Installing Database Suite (PostgreSQL & Redis)..."
-    apt-get install -y postgresql postgresql-contrib redis-server
-    log_success "Databases installed."
-}
 
 configure_logrotate() {
     log_info "Configuring permanent log rotation (max 100MB per file)..."
@@ -264,11 +223,7 @@ EOF
     log_success "Logrotate policy applied."
 }
 
-install_nginx() {
-    log_info "Installing Nginx Web Server..."
-    apt-get install -y nginx
-    log_success "Nginx installed."
-}
+
 
 install_security() {
     log_info "Installing Security Suite (UFW & Fail2Ban)..."
@@ -291,8 +246,9 @@ install_utils() {
 }
 
 configure_sysctl() {
-    log_info "Applying sysctl optimizations..."
+    log_info "Applying system optimizations..."
     cat <<EOF > /etc/sysctl.d/99-linuxinit.conf
+# Network hardening
 net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_slow_start_after_idle = 0
 net.core.rmem_max = 16777216
@@ -300,9 +256,26 @@ net.core.wmem_max = 16777216
 net.ipv4.tcp_rmem = 4096 87380 16777216
 net.ipv4.tcp_wmem = 4096 65536 16777216
 fs.file-max = 2097152
+
+# Security optimizations
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_rfc1337 = 1
+net.ipv4.tcp_timestamps = 0
+net.ipv4.conf.all.log_martians = 1
+kernel.randomize_va_space = 2
+kernel.kptr_restrict = 2
+kernel.perf_event_paranoid = 3
 EOF
     sysctl -p /etc/sysctl.d/99-linuxinit.conf
-    log_success "Sysctl optimizations applied."
+    log_success "System security rules applied."
 }
 
 configure_ssh() {
@@ -311,12 +284,24 @@ configure_ssh() {
         printf "${YELLOW}[?]${NC} Enter new SSH port [2222]: "
         read -r ssh_port || ssh_port="2222"
         sed -i "s/#Port 22/Port $ssh_port/" /etc/ssh/sshd_config
+        sed -i "s/Port 22/Port $ssh_port/" /etc/ssh/sshd_config
         log_success "SSH port changed to $ssh_port."
     fi
-    if ask_question "Disable SSH password authentication (require keys)?"; then
+    if ask_question "Apply Advanced SSH security (Hardened Ciphers, Disable Root)?"; then
+        # Modern KEX, Ciphers, and MACs
+        cat <<EOF >> /etc/ssh/sshd_config
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+EOF
+        sed -i "s/#PermitRootLogin prohibit-password/PermitRootLogin no/" /etc/ssh/sshd_config
+        sed -i "s/PermitRootLogin yes/PermitRootLogin no/" /etc/ssh/sshd_config
+        sed -i "s/#MaxAuthTries 6/MaxAuthTries 3/" /etc/ssh/sshd_config
+        sed -i "s/#ClientAliveInterval 0/ClientAliveInterval 300/" /etc/ssh/sshd_config
+        sed -i "s/#ClientAliveCountMax 3/ClientAliveCountMax 2/" /etc/ssh/sshd_config
         sed -i "s/#PasswordAuthentication yes/PasswordAuthentication no/" /etc/ssh/sshd_config
         sed -i "s/PasswordAuthentication yes/PasswordAuthentication no/" /etc/ssh/sshd_config
-        log_success "SSH password authentication disabled."
+        log_success "Advanced SSH security applied. RSA keys are now discouraged, use Ed25519."
     fi
     systemctl restart ssh
 }
@@ -325,47 +310,24 @@ setup_motd() {
     log_info "Setting up professional MOTD..."
     cat <<'EOF' > /etc/motd
    linuxInit - Systems Manager
-   Status: Hardened & Optimized
+    Status: Secured & Optimized
 EOF
     log_success "MOTD updated."
 }
 
-install_certbot() {
-    log_info "Installing Certbot and Nginx plugin..."
-    apt-get install -y certbot python3-certbot-nginx
-    log_success "Certbot installed."
-}
 
-setup_backups() {
-    log_info "Setting up automated database backups..."
-    cat <<'EOF' > /usr/local/bin/linuxinit-backup.sh
-#!/bin/bash
-BACKUP_DIR="/var/backups/linuxinit"
-mkdir -p "$BACKUP_DIR"
-if command -v pg_dump > /dev/null; then
-    pg_dumpall > "$BACKUP_DIR/postgres_$(date +%F).sql"
-fi
-if command -v redis-cli > /dev/null; then
-    redis-cli save
-    cp /var/lib/redis/dump.rdb "$BACKUP_DIR/redis_$(date +%F).rdb"
-fi
-find "$BACKUP_DIR" -type f -mtime +7 -delete
-EOF
-    chmod +x /usr/local/bin/linuxinit-backup.sh
-    (crontab -l 2>/dev/null; echo "0 3 * * * /usr/local/bin/linuxinit-backup.sh") | crontab -
-    log_success "Backup script installed at /usr/local/bin/linuxinit-backup.sh (Cron: 3 AM daily)."
-}
+
+
 
 setup_healthcheck() {
     log_info "Setting up auto-heal healthchecks..."
     cat <<'EOF' > /usr/local/bin/linuxinit-check.sh
 #!/bin/bash
-services=("nginx" "docker" "ssh" "postgresql" "redis-server")
+services=("ssh" "fail2ban" "crowdsec")
 for s in "${services[@]}"; do
-    if systemctl is-active --quiet "$s"; then
-        continue
+    if systemctl list-unit-files "$s.service" &>/dev/null && ! systemctl is-active --quiet "$s"; then
+        systemctl restart "$s"
     fi
-    systemctl restart "$s"
 done
 EOF
     chmod +x /usr/local/bin/linuxinit-check.sh
@@ -373,20 +335,51 @@ EOF
     log_success "Healthcheck script installed (Cron: every 5 minutes)."
 }
 
-setup_docker_templates() {
-    log_info "Generating Docker Compose templates..."
-    mkdir -p /opt/linuxinit/templates
-    cat <<'EOF' > /opt/linuxinit/templates/docker-compose-app.yml
-version: '3.8'
-services:
-  app:
-    image: nginx:alpine
-    ports:
-      - "8080:80"
-    restart: always
-EOF
-    log_success "Templates created in /opt/linuxinit/templates."
+install_lynis() {
+    log_info "Installing Lynis Security Auditor..."
+    apt-get install -y lynis
+    log_success "Lynis installed."
 }
+
+install_crowdsec() {
+    log_info "Installing CrowdSec (Modern IPS)..."
+    curl -s https://install.crowdsec.net | sh
+    apt-get update
+    apt-get install -y crowdsec crowdsec-firewall-bouncer-ufw
+    log_success "CrowdSec IPS installed and connected to UFW bouncer."
+}
+
+setup_mfa() {
+    log_info "Setting up 2FA for SSH (Google Authenticator)..."
+    apt-get install -y libpam-google-authenticator
+    log_warn "CRITICAL: You MUST run 'google-authenticator' as your user after this script!"
+    if ! grep -q "pam_google_authenticator.so" /etc/pam.d/sshd; then
+        sed -i '1iauth required pam_google_authenticator.so' /etc/pam.d/sshd
+    fi
+    sed -i "s/KbdInteractiveAuthentication no/KbdInteractiveAuthentication yes/" /etc/ssh/sshd_config
+    sed -i "s/ChallengeResponseAuthentication no/ChallengeResponseAuthentication yes/" /etc/ssh/sshd_config
+    echo "AuthenticationMethods publickey,keyboard-interactive" >> /etc/ssh/sshd_config
+    systemctl restart ssh
+    log_success "MFA infrastructure ready. PAM & SSHD configured."
+}
+
+install_nginx_hardened() {
+    log_info "Installing Hardened Nginx Web Server..."
+    apt-get install -y nginx
+    log_info "Applying paranoiac security settings for Nginx (TLS 1.3 only, Secure Headers)..."
+    cat <<EOF > /etc/nginx/conf.d/hardened.conf
+server_tokens off;
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+ssl_protocols TLSv1.3;
+ssl_prefer_server_ciphers off;
+EOF
+    log_success "Hardened Nginx installed and configured."
+}
+
+
 
 cleanup() {
     log_info "Cleaning up redundant packages..."
@@ -396,14 +389,10 @@ cleanup() {
 
 SWAP_STATUS="Skipped"
 ZSH_STATUS="Skipped"
-PYTHON_STATUS="Skipped"
-DOCKER_STATUS="Skipped"
-NODE_STATUS="Skipped"
-RUST_STATUS="Skipped"
-GO_STATUS="Skipped"
-DB_STATUS="Skipped"
-NGINX_STATUS="Skipped"
 SECURITY_STATUS="Skipped"
+CROWDSEC_STATUS="Skipped"
+NGINX_STATUS="Skipped"
+MFA_STATUS="Skipped"
 TOOLS_STATUS="Skipped"
 UTILS_STATUS="Skipped"
 
@@ -452,17 +441,11 @@ start_installer() {
     "USER" "Create Non-Root Sudo User" OFF \
     "SWAP" "Create 2GB Swap File" OFF \
     "ZSH" "Install Zsh & Aliases" OFF \
-    "DOCKER" "Install Docker Engine" OFF \
-    "DOCKER_TMP" "Generate Docker Templates" OFF \
-    "PYTHON" "Install Python stack" OFF \
-    "NODE" "Install Node.js (LTS)" OFF \
-    "RUST" "Install Rust (rustup)" OFF \
-    "GO" "Install Golang" OFF \
-    "DB" "Databases (Postgres/Redis)" OFF \
-    "NGINX" "Install Nginx Server" OFF \
-    "SSL" "Setup SSL (Certbot)" OFF \
-    "HARDEN" "Security Hardening" OFF \
-    "BACKUP" "Automated Backups" OFF \
+    "HARDEN" "Advanced Security" OFF \
+    "CROWDSEC" "Intrusion Prevention (CrowdSec)" OFF \
+    "MFA" "SSH 2FA (Google Authenticator)" OFF \
+    "NGINX" "Secured Nginx (TLS 1.3)" OFF \
+    "AUDIT" "Security Audit (Lynis)" OFF \
     "HEALTH" "Auto-Heal Healthchecks" OFF \
     "LOGROTATE" "Permanent Log Rotation" ON \
     "TOOLS" "Neovim & Tmux" OFF \
@@ -476,19 +459,13 @@ start_installer() {
     [[ "$CHOICES" == *"USER"* ]] && create_ssh_user
     [[ "$CHOICES" == *"SWAP"* ]] && { setup_swap; SWAP_STATUS="Created"; }
     [[ "$CHOICES" == *"ZSH"* ]] && { install_productivity; ZSH_STATUS="Installed"; }
-    [[ "$CHOICES" == *"DOCKER"* ]] && { install_docker; DOCKER_STATUS="Installed"; }
-    [[ "$CHOICES" == *"DOCKER_TMP"* ]] && setup_docker_templates
-    [[ "$CHOICES" == *"PYTHON"* ]] && { install_python; PYTHON_STATUS="Installed"; }
-    [[ "$CHOICES" == *"NODE"* ]] && { install_node; NODE_STATUS="Installed"; }
-    [[ "$CHOICES" == *"RUST"* ]] && { install_rust; RUST_STATUS="Installed"; }
-    [[ "$CHOICES" == *"GO"* ]] && { install_go; GO_STATUS="Installed"; }
-    [[ "$CHOICES" == *"DB"* ]] && { install_databases; DB_STATUS="Installed"; }
-    [[ "$CHOICES" == *"NGINX"* ]] && { install_nginx; NGINX_STATUS="Installed"; }
-    [[ "$CHOICES" == *"SSL"* ]] && { install_certbot; }
     [[ "$CHOICES" == *"HARDEN"* ]] && { configure_sysctl; configure_ssh; setup_motd; SECURITY_STATUS="Hardened"; }
-    [[ "$CHOICES" == *"BACKUP"* ]] && { setup_backups; }
-    [[ "$CHOICES" == *"HEALTH"* ]] && { setup_healthcheck; }
-    [[ "$CHOICES" == *"LOGROTATE"* ]] && { configure_logrotate; }
+    [[ "$CHOICES" == *"CROWDSEC"* ]] && { install_crowdsec; CROWDSEC_STATUS="Installed"; }
+    [[ "$CHOICES" == *"MFA"* ]] && { setup_mfa; MFA_STATUS="Installed"; }
+    [[ "$CHOICES" == *"NGINX"* ]] && { install_nginx_hardened; NGINX_STATUS="Installed"; }
+    [[ "$CHOICES" == *"AUDIT"* ]] && install_lynis
+    [[ "$CHOICES" == *"HEALTH"* ]] && setup_healthcheck
+    [[ "$CHOICES" == *"LOGROTATE"* ]] && configure_logrotate
     [[ "$CHOICES" == *"TOOLS"* ]] && { install_editor_tools; TOOLS_STATUS="Installed"; }
     [[ "$CHOICES" == *"UTILS"* ]] && { install_utils; UTILS_STATUS="Installed"; }
 
@@ -524,54 +501,30 @@ start_linear_installer() {
         ZSH_STATUS="Installed"
     fi
 
-    if ask_question "Install Python stack?"; then
-        install_python
-        PYTHON_STATUS="Installed"
-    fi
-
-    if ask_question "Install Docker Suite?"; then
-        install_docker
-        DOCKER_STATUS="Installed"
-    fi
-
-    if ask_question "Install Node.js (LTS)?"; then
-        install_node
-        NODE_STATUS="Installed"
-    fi
-
-    if ask_question "Install Rust (rustup)?"; then
-        install_rust
-        RUST_STATUS="Installed"
-    fi
-
-    if ask_question "Install Golang?"; then
-        install_go
-        GO_STATUS="Installed"
-    fi
-
-    if ask_question "Install Databases (Postgres/Redis)?"; then
-        install_databases
-        DB_STATUS="Installed"
-    fi
-
-    if ask_question "Install Nginx Server?"; then
-        install_nginx
-        NGINX_STATUS="Installed"
-    fi
-
-    if ask_question "Apply Security Hardening (SSH/Sysctl)?"; then
+    if ask_question "Apply Advanced Security (SSH/Sysctl)?"; then
         configure_sysctl
         configure_ssh
         setup_motd
         SECURITY_STATUS="Hardened"
     fi
 
-    if ask_question "Setup SSL (Certbot) for Nginx?"; then
-        install_certbot
+    if ask_question "Install CrowdSec (Modern IPS)?"; then
+        install_crowdsec
+        CROWDSEC_STATUS="Installed"
     fi
 
-    if ask_question "Enable Automated Backups (Postgres/Redis)?"; then
-        setup_backups
+    if ask_question "Setup SSH 2FA (MFA)?"; then
+        setup_mfa
+        MFA_STATUS="Installed"
+    fi
+
+    if ask_question "Install Secured Nginx (TLS 1.3)?"; then
+        install_nginx_hardened
+        NGINX_STATUS="Installed"
+    fi
+
+    if ask_question "Install Security Auditor (Lynis)?"; then
+        install_lynis
     fi
 
     if ask_question "Enable Auto-Healing Healthchecks?"; then
@@ -604,14 +557,10 @@ finalize_installation() {
     printf "%-22s %s\n" "Update Status:" "Success"
     printf "%-22s %s\n" "Swap File:" "$SWAP_STATUS"
     printf "%-22s %s\n" "Zsh & Aliases:" "$ZSH_STATUS"
-    printf "%-22s %s\n" "Python stack:" "$PYTHON_STATUS"
-    printf "%-22s %s\n" "Docker Engine:" "$DOCKER_STATUS"
-    printf "%-22s %s\n" "Node.js (LTS):" "$NODE_STATUS"
-    printf "%-22s %s\n" "Rust (rustup):" "$RUST_STATUS"
-    printf "%-22s %s\n" "Golang:" "$GO_STATUS"
-    printf "%-22s %s\n" "Databases:" "$DB_STATUS"
-    printf "%-22s %s\n" "Nginx Server:" "$NGINX_STATUS"
-    printf "%-22s %s\n" "Security Suite:" "$SECURITY_STATUS"
+    printf "%-22s %s\n" "Security System:" "$SECURITY_STATUS"
+    printf "%-22s %s\n" "CrowdSec IPS:" "$CROWDSEC_STATUS"
+    printf "%-22s %s\n" "SSH MFA (2FA):" "$MFA_STATUS"
+    printf "%-22s %s\n" "Secured Nginx:" "$NGINX_STATUS"
     printf "%-22s %s\n" "Htop/Btop/Atop:" "Installed"
     printf "%-22s %s\n" "Workspace Tools:" "$TOOLS_STATUS"
     printf "%-22s %s\n" "Utility Tools:" "$UTILS_STATUS"

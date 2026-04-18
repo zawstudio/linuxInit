@@ -4,17 +4,13 @@ A high-performance, expert-grade Bash script designed to configure and harden fr
 
 ## ✨ Advanced Features
 
-- **🚀 System Optimization**: Automated **Swap File**, **Sysctl Tuning**, and **Hardware Analysis**.
-- **🛡️ Security Hardening**: **SSH Hardening**, **User Management** (Non-root sudo), **UFW**, and **Fail2Ban**.
+- **🚀 System Optimization**: Automated **Swap File**, **Advanced Tuning**, and **Hardware Analysis**.
+- **🛡️ Security System**: **Modern SSH Security**, **User Management**, **UFW**, and **CrowdSec IPS**.
 - **⚡ Productivity Stack**:
   - **Premium Shell**: Optional **Zsh** installation.
-  - **Expert Aliases**: Shortcuts for logs (`logssh`), listeners (`ports`), and monitoring.
-- **🛠️ Modular Engines**:
-  - **Languages**: Python, Node.js, Rust, and Go.
-  - **Infrastructure**: Docker Engine & **Compose Templates**, Nginx (SSL via Certbot).
-  - **Databases**: PostgreSQL and Redis with automated **daily backups**.
-- **📊 Professional Monitoring**: Includes `htop`, `btop`, `glances`, and `sysstat`.
-- **🏥 Maintenance**: Automated **Auto-Heal** healthchecks and **Unattended Upgrades**.
+  - **Expert Aliases**: Shortcuts for logs (`logssh`), listeners (`ports`), and system updates.
+- **📊 Professional Monitoring**: Includes `htop`, `btop`, and `atop`.
+- **🏥 Maintenance**: **SSH 2FA (MFA)**, **Security Audits (Lynis)**, **Auto-Heal**, and **Secured Nginx**.
 - **🎨 Automation**: **Visual Select Menu** (whiptail) and Unattended mode (`-y`).
 
 ## 🚀 Quick Usage
