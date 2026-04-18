@@ -239,12 +239,6 @@ install_editor_tools() {
     log_success "Editor tools installed."
 }
 
-install_utils() {
-    log_info "Installing essential utilities and network tools..."
-    apt-get install -y git curl wget unzip build-essential speedtest-cli
-    log_success "Utilities and Speedtest-cli installed."
-}
-
 configure_sysctl() {
     log_info "Applying system optimizations..."
     cat <<EOF > /etc/sysctl.d/99-linuxinit.conf
@@ -514,8 +508,14 @@ start_installer() {
     "HEALTH" "Auto-Heal Healthchecks" OFF \
     "LOGROTATE" "Permanent Log Rotation" ON \
     "TOOLS" "Neovim & Tmux" OFF \
-    "UTILS" "Essential Utils (Git/Curl)" ON \
-    "PHP" "PHP 8.4 + Extensions" OFF \
+    "GIT" "Git Version Control" ON \
+    "CURL" "cURL Transfer Tool" ON \
+    "WGET" "Wget Downloader" ON \
+    "UNZIP" "Unzip Utility" ON \
+    "SCREEN" "GNU Screen Multiplexer" ON \
+    "SPEEDTEST" "Ookla Speedtest CLI" ON \
+    "BUILD" "Build Essential (gcc/make)" OFF \
+    "PHP" "PHP Selection Menu" OFF \
     "MARIADB" "MariaDB Server" OFF \
     "REDIS" "Redis Server" OFF \
     "COMPOSER" "Composer v2" OFF \
@@ -537,7 +537,22 @@ start_installer() {
     [[ "$CHOICES" == *"HEALTH"* ]] && setup_healthcheck
     [[ "$CHOICES" == *"LOGROTATE"* ]] && configure_logrotate
     [[ "$CHOICES" == *"TOOLS"* ]] && { install_editor_tools; TOOLS_STATUS="Installed"; }
-    [[ "$CHOICES" == *"UTILS"* ]] && { install_utils; UTILS_STATUS="Installed"; }
+
+    # Individual Utility Logic
+    SELECTED_PKGS=()
+    [[ "$CHOICES" == *"GIT"* ]] && SELECTED_PKGS+=("git")
+    [[ "$CHOICES" == *"CURL"* ]] && SELECTED_PKGS+=("curl")
+    [[ "$CHOICES" == *"WGET"* ]] && SELECTED_PKGS+=("wget")
+    [[ "$CHOICES" == *"UNZIP"* ]] && SELECTED_PKGS+=("unzip")
+    [[ "$CHOICES" == *"SCREEN"* ]] && SELECTED_PKGS+=("screen")
+    [[ "$CHOICES" == *"SPEEDTEST"* ]] && SELECTED_PKGS+=("speedtest-cli")
+    [[ "$CHOICES" == *"BUILD"* ]] && SELECTED_PKGS+=("build-essential")
+
+    if [ ${#SELECTED_PKGS[@]} -gt 0 ]; then
+        log_info "Installing selected utilities: ${SELECTED_PKGS[*]}..."
+        apt-get install -y "${SELECTED_PKGS[@]}"
+        UTILS_STATUS="Installed (${#SELECTED_PKGS[@]} tools)"
+    fi
     [[ "$CHOICES" == *"PHP"* ]] && install_php
     [[ "$CHOICES" == *"MARIADB"* ]] && { install_mariadb; MARIADB_STATUS="Installed"; }
     [[ "$CHOICES" == *"REDIS"* ]] && { install_redis; REDIS_STATUS="Installed"; }
@@ -615,9 +630,20 @@ start_linear_installer() {
         TOOLS_STATUS="Installed"
     fi
 
-    if ask_question "Install Essential Utils (Git/Curl)?"; then
-        install_utils
-        UTILS_STATUS="Installed"
+    # Linear Installer for Utilities
+    LIN_PKGS=()
+    ask_question "Install Git?" && LIN_PKGS+=("git")
+    ask_question "Install Curl?" && LIN_PKGS+=("curl")
+    ask_question "Install Wget?" && LIN_PKGS+=("wget")
+    ask_question "Install Unzip?" && LIN_PKGS+=("unzip")
+    ask_question "Install Screen?" && LIN_PKGS+=("screen")
+    ask_question "Install Speedtest-cli?" && LIN_PKGS+=("speedtest-cli")
+    ask_question "Install Build-Essential (GCC/Make)?" && LIN_PKGS+=("build-essential")
+
+    if [ ${#LIN_PKGS[@]} -gt 0 ]; then
+        log_info "Installing selected utilities: ${LIN_PKGS[*]}..."
+        apt-get install -y "${LIN_PKGS[@]}"
+        UTILS_STATUS="Installed (${#LIN_PKGS[@]} tools)"
     fi
 
     if ask_question "Install PHP (Choose version)?"; then
